@@ -1,0 +1,45 @@
+Rest API:
+
+acController
+------------
+
+v1/on : Turn on for 15 minutes
+v1/on/[minutes] : Turn on for [minutes] minutes
+v1/addtime/[minutes] : Add more minutes to ON time, return remaining time.
+v1/off : Turn off
+v1/status : Show status: 
+    IP address
+    ON/OFF, since, until
+
+
+thermostat
+----------
+
+v1/temp, v1/temperature : Show temperature
+v1/hum, v1/humidity : Show humidity
+v1/targetTemp/[Temp] : Target temperature
+v1/status : Show status:
+    IP address
+    Temperature
+    Target temperature
+    Humidity
+    Time On
+
+    
+Buttons:
+
+acController
+------------
+
+on/off switch
+
+
+
+thermostat
+----------
+
+UP : Target temperature UP
+DOWN : Target temperature DOWN
+PUSH : Add 15 minutes ON
+
+
