@@ -1,3 +1,23 @@
+/*
+ * Description of the board from Aliexpress, for possible future reference
+ * Features:
+ * One AD inputs.
+ * Micro USB inputs.
+ * One programmable LED (D0).
+ * Integrated 18650 battery charging and discharging system.
+ * One switch controls whether the 18650 battery is powered or not.
+ * OLED's SDA and SCL connect to the D1 pin and the D2 pin respectively.
+ * The five buttons are controlled by FLATH, RSET, D5, D6, and D7 respectively.
+ * The 5 Digital pins can configure the write/read/interrupt/pwm/I2C/one-wire supported separately.
+ * Operation and NodeMCU consistent, adding a programmable LED, you can use GPIO16 to control, display 8266 running status and other functions. Integrated OLED and five button, more convenient for development.
+ * The design concept originates from the open source project NodeMCU, and the development board integrates 18650 charging and discharging systems with charging and discharging protection. At the same time, a OLED and five directional buttons are integrated to facilitate the development.
+ * 
+ * 
+ * 
+ * 
+ */
+
+
 #include <FS.h>                   //this needs to be first, or it all crashes and burns...
 
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
@@ -5,6 +25,7 @@
 //needed for library
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
@@ -24,6 +45,7 @@ https://github.com/spacehuhn/esp8266_deauther/wiki/Setup-Display-&-Buttons
 // This DHT sensor library fixes a bug from adafruit library:
 // https://github.com/khjoen/DHT-sensor-library
 
+// graphics come from https://github.com/ThingPulse/esp8266-oled-ssd1306
 
 #include "DHT.h"
  
@@ -47,12 +69,14 @@ DHT dht(DHTPin, DHTTYPE);
 #define CURSOR_UP     12
 #define CURSOR_DOWN   13
 
+#define TIME_FOR_ACTION    (10*60)
 
 SSD1306Wire  display(0x3c, 5 /*D1*/, 4 /*D2*/);
 
 
-
-
+float targetTemp = 10;
+float prevH, prevT;
+int acOn = 0;
 
 ESP8266WebServer server(80);
 
@@ -70,11 +94,7 @@ time_t now;
 #define DEBUG_LOG_INFO(x) { if(enableTime) { now = time(nullptr); DEBUG_LOG(now); DEBUG_LOG(":"); DEBUG_LOG(__LINE__); DEBUG_LOG(":"); DEBUG_LOG(x); } }
 
 //define your default values here, if there are different values in config.json, they are overwritten.
-char client_secret[128] = "";
-char client_id[128] = "";
-char refresh_token[128] = "";
-char access_token[128] = "";
-char device_id[128] = "";
+char relayName[128] = "";
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -90,8 +110,31 @@ void handleRoot() {
 }
 
 void handleDisconnect(){
+  server.send(200, "text/plain", "Done");
+  DEBUG_LOG_INFO_LN("Disconnecting");
   WiFi.disconnect();
+  DEBUG_LOG_INFO_LN("Restarting");
   ESP.restart();
+}
+
+void handleTemp() {
+  server.send(200, "text/plain", String(prevT));  
+}
+
+
+void handleHumidity() {
+  server.send(200, "text/plain", String(prevH));  
+}
+
+void handleTargetTemp() {
+  for (int i = 0; i < server.args(); i++) {
+    if(server.argName(i) == "temp") {
+      targetTemp = server.arg(i).toFloat();
+      break;
+    }
+  } 
+
+  server.send(200, "text/plain", "Done");
 }
 
 
@@ -120,8 +163,12 @@ void setup() {
   display.init();
 
   display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_10);
+  display.setFont(ArialMT_Plain_16);
 
+  display.drawString(0, 20, "Connecting to Wifi");
+
+  display.display();  
+  
   pinMode(CURSOR_BUTTON, INPUT_PULLUP);
   pinMode(CURSOR_UP, INPUT_PULLUP);
   pinMode(CURSOR_DOWN, INPUT_PULLUP);
@@ -153,10 +200,7 @@ void setup() {
         if (json.success()) {
           DEBUG_LOG_INFO_LN("parsed json");
 
-          strcpy(client_secret, json["client_secret"]);
-          strcpy(client_id, json["client_id"]);
-          strcpy(refresh_token, json["refresh_token"]);
-          strcpy(device_id, json["device_id"]);
+          strcpy(relayName, json["relayName"]);
 
         } else {
           DEBUG_LOG_INFO_LN("failed to load json config");
@@ -173,10 +217,7 @@ void setup() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter custom_client_secret("client_secret", "client_secret", client_secret, 128);
-  WiFiManagerParameter custom_client_id("client_id", "client_id", client_id, 128);
-  WiFiManagerParameter custom_refresh_token("refresh_token", "refresh_token", refresh_token, 128);
-  WiFiManagerParameter custom_device_id("device_id", "device_id", device_id, 128);
+  WiFiManagerParameter custom_relayName("relayName", "relayName", relayName, 128);
 
   //WiFiManager
   //Local intialization. Once its business is done, there is no need to keep it around
@@ -189,10 +230,7 @@ void setup() {
   //wifiManager.setSTAStaticIPConfig(IPAddress(10,0,1,99), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
   
   //add all your parameters here
-  wifiManager.addParameter(&custom_client_secret);
-  wifiManager.addParameter(&custom_client_id);
-  wifiManager.addParameter(&custom_refresh_token);
-  wifiManager.addParameter(&custom_device_id);
+  wifiManager.addParameter(&custom_relayName);
 
   //reset settings - for testing
   //wifiManager.resetSettings();
@@ -222,20 +260,14 @@ void setup() {
   DEBUG_LOG_INFO_LN("connected...yeey :)");
 
   //read updated parameters
-  strcpy(client_secret, custom_client_secret.getValue());
-  strcpy(client_id, custom_client_id.getValue());
-  strcpy(refresh_token, custom_refresh_token.getValue());
-  strcpy(device_id, custom_device_id.getValue());
+  strcpy(relayName, custom_relayName.getValue());
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
     DEBUG_LOG_INFO_LN("saving config");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
-    json["client_secret"] = client_secret;
-    json["client_id"] = client_id;
-    json["refresh_token"] = refresh_token;
-    json["device_id"] = device_id;
+    json["relayName"] = relayName;
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
@@ -247,6 +279,11 @@ void setup() {
     configFile.close();
     //end save
   }
+
+  display.clear();
+  display.drawString(0, 20, "Connected");
+  display.display();  
+  
 
   DEBUG_LOG_INFO_LN("local ip");
   DEBUG_LOG_INFO_LN(WiFi.localIP());
@@ -264,6 +301,12 @@ void setup() {
 
   server.on("/", handleRoot);
   server.on("/disconnectWifi", handleDisconnect);
+  server.on("/v1/temp", handleTemp);
+  server.on("/v1/temperature", handleTemp);
+  server.on("/v1/hum", handleHumidity);
+  server.on("/v1/humidity", handleHumidity);
+  server.on("/v1/target", handleTargetTemp);
+  server.on("/v1/targetTemp", handleTargetTemp);
   
   server.onNotFound(handleNotFound);
 
@@ -288,7 +331,8 @@ void setup() {
   
 
   enableTime = 1;
-  
+
+
   // WiFi.disconnect();
 }
 
@@ -296,26 +340,65 @@ void setup() {
 
 
 void showError(String str) {
-  display.drawString(0, 40, str);
+  display.drawString(0, 20, str);
   DEBUG_LOG_INFO_LN(str);
 
 }
 
 void showSensor(float h, float t){
-  display.drawString(0, 50, "H: " + String(h) + "T: " + String(t));
-  
-  DEBUG_LOG_INFO_LN("H: " + String(h) + "T: " + String(t));
+  display.setFont(ArialMT_Plain_24);
+  display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
+  display.drawString(64, 26, " " + String(t) + " ºC");
+
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(64, 52, " " + String(targetTemp) + " ºC");
+  if(acOn) {
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(16, 46, "*");
+  }
 }
 
 
+int keyHandler(int button, int up, int down) {
+
+  if(!up) {
+    DEBUG_LOG_INFO_LN("UP");
+    targetTemp++;
+  }
+  if(!down) {
+    DEBUG_LOG_INFO_LN("DOWN");
+    targetTemp--;
+  }
+  if(!button) 
+    DEBUG_LOG_INFO_LN("BUTTON");
+
+  return !up | !button | !down;
+  
+/*
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.setFont(ArialMT_Plain_10);
+
+
+  if(!up) 
+    display.drawString(0, 10, "UP is Pressed");
+  if(!down) 
+    display.drawString(0, 20, "DOWN is Pressed");
+  if(!button) 
+    display.drawString(0, 30, "BUTTON is Pressed");
+*/
+}
 
 
 void loop() {
+  static int cnt = 0;
   uint8_t i;
   static int once = 0;
   server.handleClient();
   time_t currentTime = time(nullptr);
+  static time_t lastAction = 0;
   int error = 0;
+  float h = prevH;
+  float t = prevT;
 
 
   if (telnet.hasClient()) {
@@ -345,34 +428,60 @@ void loop() {
   // clear the display
   display.clear();
 
-  // Wait a few seconds between measurements.
-  delay(2000);
-  
+  // Wait between measurements.
+  delay(500);
+  if((cnt % 4) == 0) {
   // Reading temperature or humidity takes about 250 milliseconds!
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-
-  static float prevH, prevT;
-
+    h = dht.readHumidity();
+    t = dht.readTemperature();
+    DEBUG_LOG_INFO_LN("H: " + String(h) + "T: " + String(t));
+  }
   
+  int keyPressed = keyHandler(digitalRead(CURSOR_BUTTON), digitalRead(CURSOR_UP), digitalRead(CURSOR_DOWN));
+
   if (isnan(h) || isnan(t)) {
     showError("Failed to read from DHT sensor!");
     showSensor(prevH, prevT);
 //    return;
   }
   else {
-
-  
     showSensor(h, t);
     prevH = h;
     prevT = t;
   }
   
   display.display();  
+  cnt++;
+
+  if(keyPressed || ((currentTime - lastAction) >= TIME_FOR_ACTION)) {
+    HTTPClient http;
+    String dest = "http://" + String(relayName) + "/v1/";
+  
+    if(targetTemp < prevT) {
+      DEBUG_LOG_INFO_LN("Turn AC on");  
+      acOn = 1;
+      dest += "on";
+    }
+    else {
+      DEBUG_LOG_INFO_LN("Turn AC off");  
+      acOn = 0;
+      dest += "off";
+    }
 
 
-  DEBUG_LOG_INFO("Memory: ");
-  DEBUG_LOG_LN(ESP.getFreeHeap());
+    http.begin(dest);     //Specify request destination
+  
+    int httpCode = http.GET();            //Send the request
+
+    if(httpCode != 200) {
+      DEBUG_LOG_INFO_LN("Error Received " + String(httpCode) + " " + http.getString());  
+    }
+    
+  
+    lastAction = currentTime;
+  }
+//  DEBUG_LOG_INFO("Memory: ");
+//  DEBUG_LOG_LN(ESP.getFreeHeap());
   
 }
 
