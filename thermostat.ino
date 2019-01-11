@@ -70,13 +70,25 @@ DHT dht(DHTPin, DHTTYPE);
 #define CURSOR_DOWN   13
 
 #define TIME_FOR_ACTION    (10*60)
+#define ERRORS_TO_REPORT    10
 
 SSD1306Wire  display(0x3c, 5 /*D1*/, 4 /*D2*/);
 
 
-float targetTemp = 10;
+float targetTemp = 22;
+int targetTime = 0;
+int targetTimeOrig = 0;
+int updateTargetTime = 0;
 float prevH, prevT;
 int acOn = 0;
+int acMode = 0;
+int retryControl = 0;
+int controlErrors = 0;
+time_t timeUpdate = 0;
+
+#define ACMODE_TEMP 0
+#define ACMODE_TIME 1
+#define TIME_INCREMENTS 15 
 
 ESP8266WebServer server(80);
 
@@ -181,6 +193,7 @@ void setup() {
   //read configuration from FS json
   DEBUG_LOG_INFO_LN("mounting FS...");
 
+  // Need to set the SPIFFS size in arduino ide for this to work
   if (SPIFFS.begin()) {
     DEBUG_LOG_INFO_LN("mounted file system");
     if (SPIFFS.exists("/config.json")) {
@@ -348,13 +361,31 @@ void showError(String str) {
 void showSensor(float h, float t){
   display.setFont(ArialMT_Plain_24);
   display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
-  display.drawString(64, 26, " " + String(t) + " ºC");
-
+  display.drawString(64, 22, " " + String(t) + " ºC");
+  
   display.setFont(ArialMT_Plain_16);
-  display.drawString(64, 52, " " + String(targetTemp) + " ºC");
-  if(acOn) {
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.drawString(16, 46, "*");
+  if(acMode == ACMODE_TEMP) {
+    display.drawString(64, 46, " " + String(targetTemp) + " ºC");
+  }
+  else {
+    if(timeUpdate != 0) {
+      targetTime = targetTimeOrig - (time(nullptr) - timeUpdate)/60;
+      if(targetTime < 0) {
+        targetTime = 0;
+        updateTargetTime = 1;
+      }
+    }
+    display.drawString(64, 46, " " + String(targetTime) + " min");
+  }
+  if(controlErrors>=ERRORS_TO_REPORT) {
+    display.setFont(ArialMT_Plain_10);
+    display.drawString(64, 59, "ERROR:RELAY CONN");    
+  }
+  else {
+    if(acOn) {
+      display.setFont(ArialMT_Plain_10);
+      display.drawString(64, 59, "AC ON");
+    }
   }
 }
 
@@ -363,14 +394,39 @@ int keyHandler(int button, int up, int down) {
 
   if(!up) {
     DEBUG_LOG_INFO_LN("UP");
-    targetTemp++;
+    if(acMode == ACMODE_TEMP) {
+      targetTemp++;
+    }
+    else {
+      targetTime+=TIME_INCREMENTS;
+      updateTargetTime = 1;
+      timeUpdate = time(nullptr);
+      targetTimeOrig = targetTime;
+    }
   }
   if(!down) {
     DEBUG_LOG_INFO_LN("DOWN");
-    targetTemp--;
+    if(acMode == ACMODE_TEMP) {
+      targetTemp--;
+    }
+    else {
+      targetTime-=TIME_INCREMENTS;
+      if(targetTime <=0) {
+        targetTime = 0;
+      }
+      updateTargetTime = 1;
+      targetTimeOrig = targetTime;
+      timeUpdate = time(nullptr);
+    }
   }
-  if(!button) 
+  if(!button) {
     DEBUG_LOG_INFO_LN("BUTTON");
+    acMode^=1;
+    updateTargetTime = 1;
+    targetTime = 0;
+    timeUpdate = 0;
+    targetTimeOrig = targetTime;
+  }
 
   return !up | !button | !down;
   
@@ -386,6 +442,38 @@ int keyHandler(int button, int up, int down) {
   if(!button) 
     display.drawString(0, 30, "BUTTON is Pressed");
 */
+}
+
+int turnOnOffAC(int timeOn, int onOff) {
+    HTTPClient http;
+    String dest = "http://" + String(relayName) + "/v1/";
+  
+    if(onOff) {
+      DEBUG_LOG_INFO_LN("Turn AC on");  
+      acOn = 1;
+      dest += "on";
+
+      if(timeOn > 0) {
+        dest += "?time="+String(timeOn);
+      }
+    }
+    else {
+      DEBUG_LOG_INFO_LN("Turn AC off");  
+      acOn = 0;
+      dest += "off";
+    }
+
+    DEBUG_LOG_INFO_LN("Dest: " + dest);  
+
+    http.begin(dest);     //Specify request destination
+  
+    int httpCode = http.GET();            //Send the request
+
+    if(httpCode != 200) {
+      DEBUG_LOG_INFO_LN("Error Received " + String(httpCode) + " " + http.getString());  
+      return -1;
+    }
+    return 0;
 }
 
 
@@ -453,33 +541,33 @@ void loop() {
   display.display();  
   cnt++;
 
-  if(keyPressed || ((currentTime - lastAction) >= TIME_FOR_ACTION)) {
-    HTTPClient http;
-    String dest = "http://" + String(relayName) + "/v1/";
-  
-    if(targetTemp < prevT) {
-      DEBUG_LOG_INFO_LN("Turn AC on");  
-      acOn = 1;
-      dest += "on";
-    }
-    else {
-      DEBUG_LOG_INFO_LN("Turn AC off");  
-      acOn = 0;
-      dest += "off";
-    }
 
-
-    http.begin(dest);     //Specify request destination
-  
-    int httpCode = http.GET();            //Send the request
-
-    if(httpCode != 200) {
-      DEBUG_LOG_INFO_LN("Error Received " + String(httpCode) + " " + http.getString());  
-    }
+  if(acMode == ACMODE_TEMP) {
+    if(retryControl!= 0 || keyPressed || ((currentTime - lastAction) >= TIME_FOR_ACTION)) {
+      retryControl = turnOnOffAC(0, targetTemp < prevT);
     
-  
-    lastAction = currentTime;
+      lastAction = currentTime;
+    }
   }
+  else {
+    if(retryControl!= 0 || updateTargetTime) {
+      if(targetTime > 0) {
+        retryControl = turnOnOffAC(targetTime, 1);
+      }
+      else {
+        retryControl = turnOnOffAC(targetTime, 0);
+      }
+      updateTargetTime = 0;
+    }
+  }
+
+  if(retryControl!= 0) {
+    controlErrors++;
+  }
+  else {
+    controlErrors = 0;
+  }
+  
 //  DEBUG_LOG_INFO("Memory: ");
 //  DEBUG_LOG_LN(ESP.getFreeHeap());
   
