@@ -59,36 +59,39 @@ https://github.com/spacehuhn/esp8266_deauther/wiki/Setup-Display-&-Buttons
 // Connect a 10K resistor from pin 2 (data) to pin 1 (power) of the sensor
  
 const int DHTPin = 3;     // what digital pin we're connected to. This corresponds to D9 in the wemos board.
-
-
  
 DHT dht(DHTPin, DHTTYPE);
- 
-
-#define CURSOR_BUTTON 14
-#define CURSOR_UP     12
-#define CURSOR_DOWN   13
-
-#define TIME_FOR_ACTION    (10*60)
-#define ERRORS_TO_REPORT    10
 
 SSD1306Wire  display(0x3c, 5 /*D1*/, 4 /*D2*/);
 
 
-float targetTemp = 22;
-int targetTime = 0;
-int targetTimeOrig = 0;
-int updateTargetTime = 0;
-float prevH, prevT;
-int acOn = 0;
-int acMode = 0;
-int retryControl = 0;
-int controlErrors = 0;
-time_t timeUpdate = 0;
+#define CURSOR_BUTTON   14
+#define CURSOR_UP       12
+#define CURSOR_DOWN     13
 
-#define ACMODE_TEMP 0
-#define ACMODE_TIME 1
+
+
+
+#define TIME_FOR_ACTION     (10*60)
+#define ERRORS_TO_REPORT    10
+
+
+float targetTemp =      22;
+int targetTime =        0;
+int targetTimeOrig =    0;
+int updateTargetTime =  0;
+float prevH, prevT;
+int acOn =              0;
+int acMode =            0;
+int retryControl =      0;
+int controlErrors =     0;
+time_t timeUpdate =     0;
+
+#define ACMODE_TEMP     0
+#define ACMODE_TIME     1
 #define TIME_INCREMENTS 15 
+
+
 
 ESP8266WebServer server(80);
 
@@ -96,17 +99,22 @@ WiFiServer telnet(23);
 WiFiClient telnetClients;
 int disconnectedClient = 1;
 
+
 int enableTime = 0;
 time_t now; 
 
 #define DEBUG_LOG_LN(x) { Serial.println(x); if(telnetClients) { telnetClients.println(x); } }
 #define DEBUG_LOG(x) { Serial.print(x); if(telnetClients) { telnetClients.print(x); } }
 
-#define DEBUG_LOG_INFO_LN(x) { if(enableTime) { now = time(nullptr); DEBUG_LOG(now); DEBUG_LOG(":"); DEBUG_LOG(__LINE__); DEBUG_LOG(":"); DEBUG_LOG_LN(x); } }
-#define DEBUG_LOG_INFO(x) { if(enableTime) { now = time(nullptr); DEBUG_LOG(now); DEBUG_LOG(":"); DEBUG_LOG(__LINE__); DEBUG_LOG(":"); DEBUG_LOG(x); } }
+#define DEBUG_LOG_INFO_LN(x) { if(enableTime) { now = time(nullptr); DEBUG_LOG(now); DEBUG_LOG(":"); } DEBUG_LOG(__LINE__); DEBUG_LOG(":"); DEBUG_LOG_LN(x); }
+#define DEBUG_LOG_INFO(x) { if(enableTime) { now = time(nullptr); DEBUG_LOG(now); DEBUG_LOG(":"); } DEBUG_LOG(__LINE__); DEBUG_LOG(":"); DEBUG_LOG(x); }
+
+
 
 //define your default values here, if there are different values in config.json, they are overwritten.
 char relayName[128] = "";
+
+
 
 //flag for saving data
 bool shouldSaveConfig = false;
