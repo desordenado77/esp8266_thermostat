@@ -86,12 +86,15 @@ int acMode =            0;
 int retryControl =      0;
 int controlErrors =     0;
 time_t timeUpdate =     0;
+time_t lastKeyTime =    0;
+int showDisplay =       0;
 
-#define ACMODE_TEMP     0
-#define ACMODE_TIME     1
-#define TIME_INCREMENTS 15 
+#define ACMODE_TEMP           0
+#define ACMODE_TIME           1
+#define TIME_INCREMENTS       15
+#define TIME_TO_SHOW_DISPLAY  (2*60) 
 
-
+#define AP_SSID               "THERMOSTAT_AP"
 
 ESP8266WebServer server(80);
 
@@ -124,6 +127,16 @@ void saveConfigCallback () {
   DEBUG_LOG_INFO_LN("Should save config");
   shouldSaveConfig = true;
 }
+
+
+void configModeCallback (WiFiManager *myWiFiManager) {
+  display.clear();
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 10, "Entered config mode");
+  display.drawString(0, 25, myWiFiManager->getConfigPortalSSID());
+  display.display();
+}
+
 
 void handleRoot() {
   server.send(200, "text/plain", "hello from esp8266!");
@@ -247,6 +260,8 @@ void setup() {
   //set config save notify callback
   wifiManager.setSaveConfigCallback(saveConfigCallback);
 
+  wifiManager.setAPCallback(configModeCallback);  
+
   //set static ip
   //wifiManager.setSTAStaticIPConfig(IPAddress(10,0,1,99), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
   
@@ -269,7 +284,7 @@ void setup() {
   //if it does not connect it starts an access point with the specified name
   //here  "AutoConnectAP"
   //and goes into a blocking loop awaiting configuration
-  if (!wifiManager.autoConnect()) {
+  if (!wifiManager.autoConnect(AP_SSID)) {
     DEBUG_LOG_INFO_LN("failed to connect and hit timeout");
     delay(3000);
     //reset and try again, or maybe put it to deep sleep
@@ -303,6 +318,7 @@ void setup() {
 
   display.clear();
   display.drawString(0, 20, "Connected");
+  display.drawString(0, 40, "IP: " + WiFi.localIP().toString());
   display.display();  
   
 
@@ -354,19 +370,31 @@ void setup() {
   enableTime = 1;
 
 
+  wifi_set_sleep_type(LIGHT_SLEEP_T);
+  
+  delay(2000);
   // WiFi.disconnect();
+  display.clear();
+  display.displayOff();
 }
 
 
 
 
 void showError(String str) {
-  display.drawString(0, 20, str);
+  display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(64, 59, str);
   DEBUG_LOG_INFO_LN(str);
 
 }
 
 void showSensor(float h, float t){
+  
+  if(!showDisplay) {
+    return;
+  }
+  
   display.setFont(ArialMT_Plain_24);
   display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
   display.drawString(64, 22, " " + String(t) + " ºC");
@@ -395,10 +423,22 @@ void showSensor(float h, float t){
       display.drawString(64, 59, "AC ON");
     }
   }
+  display.display();
 }
 
 
 int keyHandler(int button, int up, int down) {
+  int keyPressed = !up | !button | !down;
+  if(!showDisplay && keyPressed) {
+    
+    DEBUG_LOG_INFO_LN("First Key");
+    
+    showDisplay = 1;
+    display.displayOn();
+    lastKeyTime = time(nullptr);
+    return 0;
+  }
+
 
   if(!up) {
     DEBUG_LOG_INFO_LN("UP");
@@ -436,7 +476,12 @@ int keyHandler(int button, int up, int down) {
     targetTimeOrig = targetTime;
   }
 
-  return !up | !button | !down;
+  if(keyPressed) {
+    lastKeyTime = time(nullptr);
+    showDisplay = 1;
+  }
+
+  return keyPressed;
   
 /*
     display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -521,9 +566,6 @@ void loop() {
 
   MDNS.update();
 
-  // clear the display
-  display.clear();
-
   // Wait between measurements.
   delay(500);
   if((cnt % 4) == 0) {
@@ -536,17 +578,20 @@ void loop() {
   int keyPressed = keyHandler(digitalRead(CURSOR_BUTTON), digitalRead(CURSOR_UP), digitalRead(CURSOR_DOWN));
 
   if (isnan(h) || isnan(t)) {
+    // clear the display
+    display.clear();
     showError("Failed to read from DHT sensor!");
     showSensor(prevH, prevT);
 //    return;
   }
-  else {
+  else {  
+    // clear the display
+    display.clear();
     showSensor(h, t);
     prevH = h;
     prevT = t;
   }
   
-  display.display();  
   cnt++;
 
 
@@ -574,6 +619,16 @@ void loop() {
   }
   else {
     controlErrors = 0;
+  }
+
+  if(lastKeyTime != 0) {
+    if(currentTime - lastKeyTime > TIME_TO_SHOW_DISPLAY){
+      showDisplay = 0;
+      display.clear();
+      display.display();
+      display.displayOff();
+      lastKeyTime = 0;
+    }
   }
   
 //  DEBUG_LOG_INFO("Memory: ");
