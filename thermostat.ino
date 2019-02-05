@@ -28,7 +28,7 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include <ESP8266mDNS.h>
-#include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+#include <ArduinoJson.h>          //Version 5 of https://github.com/bblanchon/ArduinoJson
 
 #include <time.h>
 
@@ -36,7 +36,7 @@
 // Include the correct display library
 // For a connection via I2C using Wire include
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
-#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
+#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`   // https://github.com/ThingPulse/esp8266-oled-ssd1306
 
 /*
 https://github.com/spacehuhn/esp8266_deauther/wiki/Setup-Display-&-Buttons
@@ -47,7 +47,7 @@ https://github.com/spacehuhn/esp8266_deauther/wiki/Setup-Display-&-Buttons
 
 // graphics come from https://github.com/ThingPulse/esp8266-oled-ssd1306
 
-#include "DHT.h"
+#include "DHT.h" // https://github.com/khjoen/DHT-sensor-library
  
 #define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
  
@@ -635,4 +635,3 @@ void loop() {
 //  DEBUG_LOG_LN(ESP.getFreeHeap());
   
 }
-
