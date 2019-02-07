@@ -325,7 +325,7 @@ void setup() {
   DEBUG_LOG_INFO_LN("local ip");
   DEBUG_LOG_INFO_LN(WiFi.localIP());
 
-  if (MDNS.begin("esp8266")) {
+  if (MDNS.begin("thermostat")) {
     DEBUG_LOG_LN("MDNS responder started");
     
     MDNS.addService("http", "tcp", 80);
