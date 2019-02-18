@@ -32,6 +32,13 @@
 
 #include <time.h>
 
+#include <mDNSResolver.h>       //https://github.com/madpilot/mDNSResolver
+
+using namespace mDNSResolver;
+WiFiUDP udp;
+Resolver resolver(udp);
+IPAddress RelayIP (0, 0, 0, 0);
+
 
 // Include the correct display library
 // For a connection via I2C using Wire include
@@ -499,7 +506,22 @@ int keyHandler(int button, int up, int down) {
 
 int turnOnOffAC(int timeOn, int onOff) {
     HTTPClient http;
-    String dest = "http://" + String(relayName) + "/v1/";
+    IPAddress ServerIP (0, 0, 0, 0);
+
+    resolver.setLocalIP(WiFi.localIP());
+    
+    ServerIP = resolver.search(relayName);
+    if (ServerIP != INADDR_NONE) {
+      DEBUG_LOG_INFO_LN("Resolved relay name: "+RelayIP);
+      RelayIP = ServerIP;
+    } 
+    else {
+      DEBUG_LOG_INFO_LN("Unable to resolve relay name. Using Previous: "+RelayIP);
+    }
+
+    // somehow esp8266 is unable to resolve the name of another esp8266 device
+    // String dest = "http://" + String(relayName) + "/v1/";
+    String dest = "http://" + String(ServerIP[0]) + '.' + String(ServerIP[1]) + '.' + String(ServerIP[2]) + '.' + String(ServerIP[3]) + "/v1/";
   
     if(onOff) {
       DEBUG_LOG_INFO_LN("Turn AC on");  
