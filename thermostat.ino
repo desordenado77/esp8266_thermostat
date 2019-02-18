@@ -529,7 +529,7 @@ int turnOnOffAC(int timeOn, int onOff) {
       dest += "on";
 
       if(timeOn > 0) {
-        dest += "?time="+String(timeOn);
+        dest += "?time="+String(timeOn*60);
       }
     }
     else {
