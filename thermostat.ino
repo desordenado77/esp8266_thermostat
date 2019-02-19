@@ -145,6 +145,23 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 }
 
 
+void saveCustomParams(String sRelayName) {
+  DEBUG_LOG_INFO_LN("saving config");
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+  json["relayName"] = sRelayName;
+
+  File configFile = SPIFFS.open("/config.json", "w");
+  if (!configFile) {
+    DEBUG_LOG_INFO_LN("failed to open config file for writing");
+  }
+
+  json.printTo(Serial);
+  json.printTo(configFile);
+  configFile.close();
+  //end save
+}
+
 void handleRoot() {
   server.send(200, "text/plain", "hello from esp8266!");
 }
@@ -177,6 +194,38 @@ void handleTargetTemp() {
   server.send(200, "text/plain", "Done");
 }
 
+
+void handleRelayName() {
+  for (int i = 0; i < server.args(); i++) {
+    if(server.argName(i) == "name") {
+      server.arg(i).toCharArray(relayName, sizeof(relayName)-1);
+      saveCustomParams(relayName);
+      server.send(200, "text/plain", "Done");
+      return;
+    }
+  } 
+
+  server.send(404, "text/plain", "Missing parameter");
+  
+}
+
+
+void handleStatus() {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+  json["temp"] = String(prevT);
+  json["humidity"] = String(prevH);
+  json["target_temp"] = String(targetTemp);
+  json["ac_status"] = acOn?"ON":"OFF";
+  json["ac_mode"] = acMode == ACMODE_TEMP?"temp":"time";
+  json["target_time"] = String(targetTime);
+  json["connect_errors"] = String(controlErrors);
+  
+  String jsonStr;
+  json.printTo(jsonStr);
+ 
+  server.send(200, "text/plain", jsonStr);
+}
 
 void handleNotFound(){
   String message = "File Not Found\n\n";
@@ -307,20 +356,7 @@ void setup() {
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
-    DEBUG_LOG_INFO_LN("saving config");
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["relayName"] = relayName;
-
-    File configFile = SPIFFS.open("/config.json", "w");
-    if (!configFile) {
-      DEBUG_LOG_INFO_LN("failed to open config file for writing");
-    }
-
-    json.printTo(Serial);
-    json.printTo(configFile);
-    configFile.close();
-    //end save
+    saveCustomParams(relayName);
   }
 
   display.clear();
@@ -351,6 +387,8 @@ void setup() {
   server.on("/v1/humidity", handleHumidity);
   server.on("/v1/target", handleTargetTemp);
   server.on("/v1/targetTemp", handleTargetTemp);
+  server.on("/v1/relayName", handleRelayName);
+  server.on("/v1/status", handleStatus);
   
   server.onNotFound(handleNotFound);
 
@@ -519,9 +557,14 @@ int turnOnOffAC(int timeOn, int onOff) {
       DEBUG_LOG_INFO_LN("Unable to resolve relay name. Using Previous: "+RelayIP);
     }
 
+    if((RelayIP[0] == 0 && RelayIP[1] == 0 && RelayIP[2] == 0 && RelayIP[3] == 0) || (RelayIP[0] == 255 && RelayIP[1] == 255 && RelayIP[2] == 255 && RelayIP[3] == 255)) {
+      DEBUG_LOG_INFO_LN("Invalid IP address for relay " + String(RelayIP[0]) + '.' + String(RelayIP[1]) + '.' + String(RelayIP[2]) + '.' + String(RelayIP[3]));
+      return -1;
+    }
+
     // somehow esp8266 is unable to resolve the name of another esp8266 device
     // String dest = "http://" + String(relayName) + "/v1/";
-    String dest = "http://" + String(ServerIP[0]) + '.' + String(ServerIP[1]) + '.' + String(ServerIP[2]) + '.' + String(ServerIP[3]) + "/v1/";
+    String dest = "http://" + String(RelayIP[0]) + '.' + String(RelayIP[1]) + '.' + String(RelayIP[2]) + '.' + String(RelayIP[3]) + "/v1/";
   
     if(onOff) {
       DEBUG_LOG_INFO_LN("Turn AC on");  
