@@ -194,6 +194,21 @@ void handleTargetTemp() {
   server.send(200, "text/plain", "Done");
 }
 
+void handleTargetTime() {
+  for (int i = 0; i < server.args(); i++) {
+    if(server.argName(i) == "time") {
+      targetTime = server.arg(i).toFloat();
+      break;
+    }
+  } 
+
+  updateTargetTime = 1;
+  timeUpdate = time(nullptr);
+  targetTimeOrig = targetTime;
+  
+  server.send(200, "text/plain", "Done");
+}
+
 
 void handleRelayName() {
   for (int i = 0; i < server.args(); i++) {
@@ -224,7 +239,7 @@ void handleStatus() {
   String jsonStr;
   json.printTo(jsonStr);
  
-  server.send(200, "text/plain", jsonStr);
+  server.send(200, "application/json", jsonStr);
 }
 
 void handleNotFound(){
@@ -241,7 +256,6 @@ void handleNotFound(){
   }
   server.send(404, "text/plain", message);
 }
-
 
 void setup() {
   Serial.begin(115200);
@@ -387,6 +401,7 @@ void setup() {
   server.on("/v1/humidity", handleHumidity);
   server.on("/v1/target", handleTargetTemp);
   server.on("/v1/targetTemp", handleTargetTemp);
+  server.on("/v1/targetTime", handleTargetTime);
   server.on("/v1/relayName", handleRelayName);
   server.on("/v1/status", handleStatus);
   

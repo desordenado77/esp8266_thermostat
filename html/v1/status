@@ -1,0 +1,9 @@
+{
+  "temp": "20",
+  "humidity": 5,
+  "target_temp": 22,
+  "ac_status": "OFF",
+  "ac_mode": "temp",
+  "target_time": 15,
+  "connect_errors": 0
+}

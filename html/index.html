@@ -1,0 +1,239 @@
+
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+            <title>Thermostat</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+            <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+          </head>
+          <script type="text/javascript">
+
+temperature = 20;
+time = 0;
+status = "ON";
+mode = "temp";
+
+function update () {
+
+  $.get('/v1/status', function(data){ 
+    obj = JSON.parse(data);
+    current_temp = obj.temp; 
+    temperature = obj.target_temp;
+    time = obj.target_time;
+    status = obj.ac_status;
+    mode = obj.ac_mode;
+    setDisplayedTargetTemp(temperature);
+    setDisplayedTargetTime(time);
+    setDisplayedTemp(current_temp);
+    setAcStatus(status)
+    if(mode == "temp") {
+      showTemp();
+    }
+    else {
+      showTime();
+    }
+
+    setTimeout(update, 10000);
+
+
+  }).fail(function() {
+      alert('Unable to get status reload when thermostat is up and running'); // or whatever
+  });
+}
+
+function setDisplayedTargetTemp(temp) {
+  jQuery("#targetTempText").html("<center><h2>"+temp+" C</center></h2>");
+}
+
+function setDisplayedTargetTime(time) {
+  strTime = "";
+  hours = Math.floor(time/60);
+  minutes = time - (hours*60);
+  if(hours != 0) {
+    strTime += hours + " hours " + minutes + " minutes";
+  }
+  else {
+    strTime += minutes + " minutes";
+  }
+  jQuery("#targetTimeText").html("<center><h2>"+strTime+"</center></h2>");
+}
+
+function setDisplayedTemp(temp) {
+  jQuery("#tempText").html("<center><h2>"+temp+" C</center></h2>");
+}
+
+function setAcStatus(status) {
+  jQuery("#acStatusText").html("<center><h2>"+status+"</center></h2>");
+}
+
+
+function setTargetTemp(temp) {
+
+  $.get('/v1/targetTemp?temp='+temp, function(data){ 
+
+  }).fail(function() {
+      alert('Unable to set target temp'); // or whatever
+  });
+}
+
+function setTargetTime(time) {
+
+$.get('/v1/targetTime?time='+time, function(data){ 
+
+}).fail(function() {
+    alert('Unable to set target time'); // or whatever
+});
+}
+
+function showTime() {
+  jQuery("#targetTemp").hide();
+  jQuery("#targetTime").show();
+}
+
+
+function showTemp() {
+  jQuery("#targetTime").hide();
+  jQuery("#targetTemp").show();
+}
+
+$(document).ready(function(){
+    
+    update();
+
+    jQuery("#timeSelected").click(function(e){
+        //do something
+        showTime();
+    });
+    jQuery("#tempSelected").click(function(e){
+        //do something
+        showTemp();
+    });
+
+    jQuery("#tempUp").click(function(e){
+        temperature++;
+        if (temperature >= 50) temperature = 49;
+        
+        setDisplayedTargetTemp(temperature);
+    
+        setTargetTemp(temperature);
+    });
+    jQuery("#tempDown").click(function(e){
+        temperature--;
+        if (temperature <= 0) temperature = 1;
+
+        setDisplayedTargetTemp(temperature);
+
+        setTargetTemp(temperature);
+    });
+
+    jQuery("#timeUp").click(function(e){
+        time+=5;
+        if (time >= 6*60) time = 6*60;
+        
+        setDisplayedTargetTime(time);
+
+        setTargetTime(time);
+    });
+    jQuery("#timeDown").click(function(e){
+        time-=5;
+        if (time <= 0) time = 0;
+
+        setDisplayedTargetTime(time);
+
+        setTargetTime(time);
+    });
+});
+
+
+            </script>
+ <body>
+
+     <div class="container">
+      <h1>Thermostat</h1>
+      <p>Configure the thermostat here.</p>
+      <div class="container" id="temp">
+            <div class="row">
+              <div class="col-sm-1"></div>
+              <div class="col-sm-10"><h2>Temperature:</h2></div>
+              <div class="col-sm-1"></div>
+            </div>
+        <div class="row">
+          <div class="col-sm-1"></div>
+          <div class="col-sm-10" id="tempText"><center><h2>20 C</h2></center></div>
+          <div class="col-sm-1">-</div>
+        </div>  
+      </div>
+      <div class="container" id="ACstatus">
+            <div class="row">
+              <div class="col-sm-1"></div>
+              <div class="col-sm-10"><h2>AC Status:</h2></div>
+              <div class="col-sm-1"></div>
+            </div>
+        <div class="row">
+          <div class="col-sm-1"></div>
+          <div class="col-sm-10" id="acStatusText"><center><h2>OFF</h2></center></div>
+          <div class="col-sm-1">-</div>
+        </div>  
+      </div>      
+
+      <div class="container" id="targetTemp">
+        <div class="row">
+          <div class="col-sm-1"></div>
+          <div class="col-sm-10"><h2>Target Temperature:</h2></div>
+          <div class="col-sm-1"></div>
+        </div>
+    <div class="row">
+            <div class="col-sm-1"></div>
+      <div class="col-sm-3"><center><a href="#" class="btn btn-info btn-lg" id="tempUp">
+        <span class="glyphicon glyphicon-chevron-up"></span>
+      </a></center></div>
+      <div class="col-sm-4" id="targetTempText"><center><h2>20 C</h2></center></div>
+      <div class="col-sm-3"><center><a href="#" class="btn btn-info btn-lg" id="tempDown">
+        <span class="glyphicon glyphicon-chevron-down"></span>
+      </a></center></div>
+      <div class="col-sm-1"></div>
+    </div>  
+  </div>
+
+  <div class="container" id="targetTime">
+        <div class="row">
+          <div class="col-sm-1"></div>
+          <div class="col-sm-10"><h2>Target Time:</h2></div>
+          <div class="col-sm-1"></div>
+        </div>
+    <div class="row">
+      <div class="col-sm-1"></div>
+      <div class="col-sm-3"><center><a href="#" class="btn btn-info btn-lg" id="timeUp">
+        <span class="glyphicon glyphicon-chevron-up"></span>
+      </a></center></div>
+      <div class="col-sm-4" id="targetTimeText"><center><h2>15 minutes</h2></center></div>
+      <div class="col-sm-3"><center><a href="#" class="btn btn-info btn-lg" id="timeDown">
+        <span class="glyphicon glyphicon-chevron-down"></span>
+      </a></center></div>
+      <div class="col-sm-1">-</div>
+    </div>  
+  </div>
+  <h1>
+  <p></p>
+  <p></p>
+  </h1>
+  <div class="container" id="mode">
+        <div class="row">
+          <div class="col-sm-1"></div>
+          <div class="col-sm-10">  <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Select Mode
+                <span class="caret"></span></button>
+                <ul class="dropdown-menu" onchange="jsFunction(this.value);">
+                  <li><a href="#" id="tempSelected">Temperature</a></li>
+                  <li><a href="#" id="timeSelected">Time</a></li>
+                </ul>
+              </div></div>
+          <div class="col-sm-1"></div>
+        </div>
+  </div>       
+    </div>
+  </body>
+</html>
+
